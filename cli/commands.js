@@ -1,7 +1,12 @@
 // Defines CLI commands to be registered with commander
 import { generateUniqueContent } from '../generator/uniqueGen.js';
 import { UniqueItem } from '../models/uniqueItem.js';
-import { addItem, getAllItems } from '../storage/storage.js';
+import {
+  addItem,
+  getAllItems,
+  deleteItemById
+} from '../storage/storage.js';
+import { validate as uuidValidate } from 'uuid';
 
 function parseTags(tagsString) {
   if (!tagsString) return [];
@@ -206,5 +211,31 @@ export function setupCommands(program) {
         return false;
       });
       printSearchResults(matches);
+    });
+
+  // 'delete' command - delete an item by id
+  program
+    .command('delete')
+    .description('Delete a unique item by id')
+    .requiredOption('--id <id>', 'Id of the unique item to delete (must be a UUID)')
+    .action(async (opts) => {
+      const id = opts.id;
+      // Validate id as UUID
+      if (!isNonEmptyString(id) || !uuidValidate(id)) {
+        console.error('Error: --id is required and must be a valid UUID.');
+        process.exit(1);
+      }
+      let deleted;
+      try {
+        deleted = await deleteItemById(id);
+      } catch (err) {
+        console.error('Error removing item:', err.message || err);
+        process.exit(1);
+      }
+      if (!deleted) {
+        console.error(`No item found with id '${id}'.`);
+        process.exit(1);
+      }
+      console.log(`Deleted item:\n  id: ${deleted.id}\n  name: ${deleted.name}\n  tags: [${deleted.tags.join(', ')}]\n  created_at: ${deleted.created_at}`);
     });
 }
