@@ -53,6 +53,40 @@ function printListTable(items) {
 }
 
 /**
+ * Format search results
+ * @param {UniqueItem[]} items
+ */
+function printSearchResults(items) {
+  // Print id, name, and a content snippet (first 40 chars, breaking on whitespace)
+  if (!Array.isArray(items) || items.length === 0) {
+    console.log('No items matched your search.');
+    return;
+  }
+  const headers = ['id', 'name', 'content snippet'];
+  const rows = items.map(item => {
+    const snippet = (item.content.length <= 40)
+      ? item.content
+      : item.content.substring(0, 37).replace(/\s+/g, ' ') + '...';
+    return [item.id, item.name, snippet];
+  });
+  // Compute column widths
+  const allRows = [headers, ...rows];
+  const widths = headers.map((_, i) =>
+    Math.max(...allRows.map(row => String(row[i]).length))
+  );
+  const mkRow = row => row.map((cell, i) => String(cell).padEnd(widths[i])).join('  ');
+  // Output
+  console.log(mkRow(headers));
+  console.log(widths.map(w => '-'.repeat(w)).join('  '));
+  rows.forEach(row => console.log(mkRow(row)));
+  if (items.length === 1) {
+    console.log('\nFound 1 matching item.');
+  } else {
+    console.log(`\nFound ${items.length} matching items.`);
+  }
+}
+
+/**
  * Setup CLI commands
  * @param {import('commander').Command} program
  */
@@ -131,5 +165,46 @@ export function setupCommands(program) {
         return;
       }
       printListTable(items);
+    });
+
+  // 'search' command - find items by keyword
+  program
+    .command('search <keyword>')
+    .description('Search items by keyword in name, content, or tags (case-insensitive, partial match)')
+    .action(async (keyword) => {
+      if (!isNonEmptyString(keyword)) {
+        console.error('Error: <keyword> is required and must be a non-empty string.');
+        process.exit(1);
+      }
+      // Get all items
+      let items;
+      try {
+        items = await getAllItems();
+      } catch (err) {
+        console.error('Error reading storage:', err.message || err);
+        process.exit(1);
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        console.log('No items stored yet! Use `generate` to add some before searching.');
+        return;
+      }
+      // Search logic: case-insensitive, partial match on name, content, or tags
+      const kw = keyword.toLowerCase();
+      const matches = items.filter(item => {
+        // name
+        if (item.name && typeof item.name === 'string' && item.name.toLowerCase().includes(kw)) {
+          return true;
+        }
+        // content
+        if (item.content && typeof item.content === 'string' && item.content.toLowerCase().includes(kw)) {
+          return true;
+        }
+        // tags (partial and case-insensitive)
+        if (Array.isArray(item.tags)) {
+          return item.tags.some(tag => typeof tag === 'string' && tag.toLowerCase().includes(kw));
+        }
+        return false;
+      });
+      printSearchResults(matches);
     });
 }
