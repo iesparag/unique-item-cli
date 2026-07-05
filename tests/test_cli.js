@@ -158,4 +158,105 @@ describe('CLI', function () {
     expect(stderr).to.match(/Error reading storage/i);
     expect(stderr).to.match(/Corrupted JSON/);
   });
+
+  // --- INTEGRATION TESTS FOR SEARCH COMMAND ---
+
+  describe('search command', function () {
+    function prepItems() {
+      // Add three different items
+      return runCli([ 'generate', '--name', 'FindMe', '--tags', 'alpha,match1' ], { env: { [STORAGE_ENV]: testFile } })
+        .then(() => runCli([ 'generate', '--name', 'otherthing', '--tags', 'beta' ], { env: { [STORAGE_ENV]: testFile } }))
+        .then(() => runCli([ 'generate', '--name', 'PartialTag', '--tags', 'gammadelta', 'PARTthing' ], { env: { [STORAGE_ENV]: testFile } }))
+        .then(() => runCli([ 'generate', '--name', 'hascontent', '--tags', 'zzz' ], { env: { [STORAGE_ENV]: testFile } }))
+        .then(() => fs.readFile(testFile, 'utf8'));
+    }
+
+    beforeEach(async function () {
+      try { await fs.unlink(testFile); } catch {}
+      await prepItems();
+      // Patch the last item's content so we can search by content
+      const arr = JSON.parse(await fs.readFile(testFile, 'utf8'));
+      arr[arr.length - 1].content = 'This contains needle and uniquecontent.';
+      await fs.writeFile(testFile, JSON.stringify(arr, null, 2), 'utf8');
+    });
+
+    it('should find by name (case-insensitive, partial)', async function () {
+      const { code, stdout } = await runCli(['search', 'find'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      // Must contain at least one result with 'FindMe' name
+      expect(stdout.toLowerCase()).to.contain('findme');
+      // Table headers
+      expect(stdout).to.match(/id\s+name\s+content snippet/);
+      // Count match statement
+      expect(stdout).to.match(/found [1-9]\d* matching item/);
+    });
+
+    it('should find by tag (case-insensitive, partial)', async function () {
+      const { code, stdout } = await runCli(['search', 'MATCH'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout.toLowerCase()).to.include('findme');
+      expect(stdout).to.match(/found [1-9]\d* matching item/);
+    });
+
+    it('should find by content (partial, case-insensitive)', async function () {
+      const { code, stdout } = await runCli(['search', 'needle'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout.toLowerCase()).to.include('hascontent');
+      expect(stdout.toLowerCase()).to.include('needle');
+      expect(stdout).to.match(/found [1-9]\d* matching item/);
+    });
+
+    it('should find by partial tag', async function () {
+      const { code, stdout } = await runCli(['search', 'delta'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout.toLowerCase()).to.include('partialtag');
+      expect(stdout).to.match(/found [1-9]\d* matching item/);
+    });
+
+    it('should be case-insensitive for all matches', async function () {
+      const { code, stdout } = await runCli(['search', 'UNIQUECONTENT'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout.toLowerCase()).to.include('hascontent');
+      expect(stdout).to.match(/found [1-9]\d* matching item/);
+    });
+
+    it('should return a friendly message if no matches', async function () {
+      const { code, stdout } = await runCli(['search', 'noSuchKeyword'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout.toLowerCase()).to.include('no items matched');
+      expect(stdout).to.match(/id\s+name\s+content snippet/).to.not.ok;
+    });
+
+    it('should report empty if storage is missing', async function () {
+      try { await fs.unlink(testFile); } catch {}
+      const { code, stdout } = await runCli(['search', 'anything'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout.toLowerCase()).to.contain('no items stored yet');
+    });
+
+    it('should exit with error on blank/empty keyword', async function () {
+      const { code, stderr } = await runCli(['search', ''], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.not.equal(0);
+      expect(stderr).to.match(/<keyword> is required/);
+    });
+
+    it('should include content snippets no longer than 40 chars', async function () {
+      const { code, stdout } = await runCli(['search', 'find'], { env: { [STORAGE_ENV]: testFile } });
+      // Content column lines are at most 50 chars wide
+      const lines = stdout.trim().split(/\r?\n/);
+      // Ignore headers, scan the content snippet column for ...
+      const snippets = lines.filter(l => /[a-z]/i.test(l)).map(l => l.split(/\s{2,}/).slice(-1)[0]);
+      snippets.forEach(snip => expect(snip.length).to.be.at.most(43));
+    });
+
+    it('should display singular/plural correctly', async function () {
+      // unique keyword to ensure one match
+      const { stdout } = await runCli(['search', 'partialtag'], { env: { [STORAGE_ENV]: testFile } });
+      expect(stdout.toLowerCase()).to.include('found 1 matching item');
+      // Use 'a' which should match more than one
+      const { stdout: s2 } = await runCli(['search', 'a'], { env: { [STORAGE_ENV]: testFile } });
+      expect(s2.toLowerCase()).to.include('found ');
+      expect(s2.toLowerCase()).to.match(/found (?:[2-9]|[1-9][0-9]+) matching items/);
+    });
+  });
 });
