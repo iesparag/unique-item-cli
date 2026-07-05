@@ -1,0 +1,31 @@
+{
+  "name": "unique-item-cli",
+  "version": "1.0.0",
+  "description": "A CLI tool to generate, search, list, and delete uniquely identified items with metadata.",
+  "type": "module",
+  "main": "cli/index.js",
+  "bin": {
+    "unique-item-cli": "cli/index.js"
+  },
+  "scripts": {
+    "test": "mocha tests/*.js"
+  },
+  "keywords": [
+    "cli",
+    "unique",
+    "generator",
+    "search",
+    "commander",
+    "uuid"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^11.1.0",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "mocha": "^10.2.0",
+    "chai": "^4.3.10"
+  }
+}

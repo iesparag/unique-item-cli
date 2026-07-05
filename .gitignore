@@ -1,6 +1,4 @@
 node_modules/
 .env
-dist/
-coverage/
-*.log
-.DS_Store
+# Default storage (match .env.example STORAGE_PATH default)
+.uniqueitems.json
