@@ -259,4 +259,47 @@ describe('CLI', function () {
       expect(s2.toLowerCase()).to.match(/found (?:[2-9]|[1-9][0-9]+) matching items/);
     });
   });
+
+  // --- INTEGRATION TESTS FOR DELETE COMMAND ---
+
+  describe('delete command', function () {
+    let idToDelete;
+    beforeEach(async function () {
+      // Use a fresh file and insert one item; fetch its id
+      await fs.unlink(testFile).catch(() => {});
+      const { stdout } = await runCli(['generate', '--name', 'DelTarget', '--tags', 'dltag'], { env: { [STORAGE_ENV]: testFile } });
+      const m = stdout.match(/id: ([a-f0-9\-]{36})/i);
+      expect(m).to.be.ok;
+      idToDelete = m[1];
+    });
+
+    it('should delete an existing item by id', async function () {
+      const { code, stdout, stderr } = await runCli(['delete', '--id', idToDelete], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.equal(0);
+      expect(stdout).to.include('Deleted item:');
+      expect(stdout).to.include(`id: ${idToDelete}`);
+      // File should now contain zero items
+      const arr = JSON.parse(await fs.readFile(testFile, 'utf8'));
+      expect(arr).to.be.an('array').with.length(0);
+    });
+
+    it('should error and exit(1) if item does not exist', async function () {
+      const bogusId = '00112233-aaaa-4bcd-e012-ffffffffffff';
+      const { code, stdout, stderr } = await runCli(['delete', '--id', bogusId], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.not.equal(0);
+      expect(stderr).to.include(`No item found with id '${bogusId}'.`);
+    });
+
+    it('should fail if id is missing or blank', async function () {
+      const { code, stderr } = await runCli(['delete'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.not.equal(0);
+      expect(stderr).to.match(/--id/);
+    });
+
+    it('should fail if id is not a valid UUID', async function () {
+      const { code, stderr } = await runCli(['delete', '--id', 'not-a-uuid'], { env: { [STORAGE_ENV]: testFile } });
+      expect(code).to.not.equal(0);
+      expect(stderr).to.match(/must be a valid UUID/);
+    });
+  });
 });
