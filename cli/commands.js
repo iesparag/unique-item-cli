@@ -1,7 +1,7 @@
 // Defines CLI commands to be registered with commander
 import { generateUniqueContent } from '../generator/uniqueGen.js';
 import { UniqueItem } from '../models/uniqueItem.js';
-import { addItem } from '../storage/storage.js';
+import { addItem, getAllItems } from '../storage/storage.js';
 
 function parseTags(tagsString) {
   if (!tagsString) return [];
@@ -23,6 +23,33 @@ function isValidTag(tag) {
 function validateTags(arr) {
   if (!Array.isArray(arr)) return false;
   return arr.every(isValidTag);
+}
+
+/**
+ * Format and print a table of items to the console
+ * @param {UniqueItem[]} items
+ */
+function printListTable(items) {
+  // Table columns: id, name, tags, created_at snippet
+  // Calculate column widths
+  const headers = ['id', 'name', 'tags', 'created_at'];
+  const rows = items.map(item => [
+    item.id,
+    item.name,
+    item.tags.join(', '),
+    item.created_at.substring(0, 19) // Just date+time part (ISO)
+  ]);
+  // Determine col widths (include header lengths)
+  const allRows = [headers, ...rows];
+  const widths = headers.map((_, i) =>
+    Math.max(...allRows.map(row => String(row[i]).length))
+  );
+  // Make a row string by padding each cell
+  const mkRow = row => row.map((cell, i) => String(cell).padEnd(widths[i])).join('  ');
+  // Output
+  console.log(mkRow(headers));
+  console.log(widths.map(w => '-'.repeat(w)).join('  '));
+  rows.forEach(row => console.log(mkRow(row)));
 }
 
 /**
@@ -85,5 +112,24 @@ export function setupCommands(program) {
         `  content: ${item.content}`
       ];
       console.log(summaryLines.join('\n'));
+    });
+
+  // 'list' command - show all stored unique items
+  program
+    .command('list')
+    .description('List all stored unique items in a table')
+    .action(async () => {
+      let items;
+      try {
+        items = await getAllItems();
+      } catch (err) {
+        console.error('Error reading storage:', err.message || err);
+        process.exit(1);
+      }
+      if (!Array.isArray(items) || items.length === 0) {
+        console.log('No unique items stored yet! Use `generate` to add an item.');
+        return;
+      }
+      printListTable(items);
     });
 }

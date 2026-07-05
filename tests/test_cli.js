@@ -115,4 +115,47 @@ describe('CLI', function () {
     const arr = JSON.parse(file);
     expect(arr[0].tags).to.deep.equal(['foo', 'bar', 'baz']);
   });
+
+  // --- INTEGRATION TESTS FOR LIST COMMAND ---
+
+  it('should show friendly message if no items to list', async function () {
+    const { code, stdout, stderr } = await runCli(['list'], { env: { [STORAGE_ENV]: testFile } });
+    expect(code).to.equal(0);
+    expect(stdout.trim()).to.match(/no unique items stored/i);
+  });
+
+  it('should display multiple items in tabular format', async function () {
+    // Add several items
+    await runCli(['generate', '--name', 'First', '--tags', 'alpha'], { env: { [STORAGE_ENV]: testFile } });
+    await runCli(['generate', '--name', 'Second Item', '--tags', 'beta,gamma'], { env: { [STORAGE_ENV]: testFile } });
+    // Call list
+    const { code, stdout } = await runCli(['list'], { env: { [STORAGE_ENV]: testFile } });
+    expect(code).to.equal(0);
+    // Table headers
+    expect(stdout).to.match(/id\s+name\s+tags\s+created_at/);
+    // At least two rows
+    const lines = stdout.trim().split(/\r?\n/);
+    const headerIdx = lines.findIndex(l => /id\s+name\s+tags\s+created_at/.test(l));
+    expect(headerIdx).to.be.at.least(0);
+    // Should contain both First and Second Item
+    const foundFirst = lines.some(l => /First/.test(l));
+    const foundSecond = lines.some(l => /Second Item/.test(l));
+    expect(foundFirst).to.be.true;
+    expect(foundSecond).to.be.true;
+    // Should see tags printed nicely
+    const tagsLine = lines.find(l => /alpha/.test(l) || /beta, gamma/.test(l));
+    expect(tagsLine).to.match(/alpha|beta, gamma/);
+    // created_at is trimmed (first 19 chars)
+    const createdSnippet = lines.some(l => /\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(l));
+    expect(createdSnippet).to.be.true;
+  });
+
+  it('should not throw or crash on corrupted storage for list', async function () {
+    // Corrupt the storage file
+    await fs.writeFile(testFile, '{ bad json', 'utf8');
+    const { code, stdout, stderr } = await runCli(['list'], { env: { [STORAGE_ENV]: testFile } });
+    expect(code).to.not.equal(0);
+    expect(stderr).to.match(/Error reading storage/i);
+    expect(stderr).to.match(/Corrupted JSON/);
+  });
 });
